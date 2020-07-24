@@ -65,6 +65,17 @@ options:
     required: true
     default: null
     choices: [ "enabled", "disabled" ]
+  agent:
+    description:
+      - Disable/enable agent checks (depending on`state` value).
+    required: false
+    default: false
+  health:
+    description:
+      - Disable/enable health checks (depending on`state` value).
+    required: false
+    default: false
+    version_added: "2.10"
   fail_on_not_found:
     description:
       - Fail whenever trying to enable/disable a backend host that does not exist
@@ -210,6 +221,8 @@ class HAProxy(object):
         self.socket = self.module.params['socket']
         self.shutdown_sessions = self.module.params['shutdown_sessions']
         self.fail_on_not_found = self.module.params['fail_on_not_found']
+        self.agent = self.module.params['agent']
+        self.health = self.module.params['health']
         self.wait = self.module.params['wait']
         self.wait_retries = self.module.params['wait_retries']
         self.wait_interval = self.module.params['wait_interval']
@@ -295,7 +308,7 @@ class HAProxy(object):
         """
         Wait for a service to reach the specified status. Try RETRIES times
         with INTERVAL seconds of sleep in between. If the service has not reached
-        the expected status in that time, the module will fail. If the service was 
+        the expected status in that time, the module will fail. If the service was
         not found, the module will fail.
         """
         for i in range(1, self.wait_retries):
@@ -317,6 +330,10 @@ class HAProxy(object):
         set the weight for haproxy backend server when provides.
         """
         cmd = "get weight $pxname/$svname; enable server $pxname/$svname"
+        if self.agent:
+            cmd += "; enable agent $pxname/$svname"
+        if self.health:
+            cmd += "; enable health $pxname/$svname"
         if weight:
             cmd += "; set weight $pxname/$svname %s" % weight
         self.execute_for_backends(cmd, backend, host, 'UP')
@@ -328,7 +345,12 @@ class HAProxy(object):
         performed on the server until it leaves maintenance,
         also it shutdown sessions while disabling backend host server.
         """
-        cmd = "get weight $pxname/$svname; disable server $pxname/$svname"
+        cmd = "get weight $pxname/$svname"
+        if self.agent:
+            cmd += "; disable agent $pxname/$svname"
+        if self.health:
+            cmd += "; disable health $pxname/$svname"
+        cmd += "; disable server $pxname/$svname"
         if shutdown_sessions:
             cmd += "; shutdown sessions server $pxname/$svname"
         self.execute_for_backends(cmd, backend, host, 'MAINT')
@@ -375,6 +397,8 @@ def main():
             socket = dict(required=False, default=DEFAULT_SOCKET_LOCATION),
             shutdown_sessions=dict(required=False, default=False, type='bool'),
             fail_on_not_found=dict(required=False, default=False, type='bool'),
+            health=dict(required=False, default=False, type='bool'),
+            agent=dict(required=False, default=False, type='bool'),
             wait=dict(required=False, default=False, type='bool'),
             wait_retries=dict(required=False, default=WAIT_RETRIES, type='int'),
             wait_interval=dict(required=False, default=WAIT_INTERVAL, type='int'),
